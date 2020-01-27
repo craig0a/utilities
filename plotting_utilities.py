@@ -12,6 +12,40 @@ def feature_distributions(data, features, value_col, ncols = 3,
                           min_group_size = 100, max_group_spike = 1.2, log_y = True, 
                           w_scale = 5, h_scale = 5, pad = 0.4, w_pad = 2.0, h_pad = 2.0, 
                           anchor_legend = None):
+    
+    """
+    Plot continuous feature distributions as split by secondary category. 
+    
+    If there are enough sample of a type in the group of secondary category, the KDE will be plotted. Otherwise, the histogram will be plotted. 
+    
+    Options to add categorical highlights binning the continuous value (not recommended if plotting histograms) and/or marked edge labels. 
+
+    Arguments:
+        data (pandas dataframe): pandas dataframe
+        features (list of strings): list of columns in date to plot (each as separate axis), split based on values in column
+        value_col (string): column name for continuous variable against which to plot
+        xmin (float): minimum value to plot
+        xmax (float): maximum value to plot
+        n_bins (int): number of bins for histogram
+        n_grid (int): resolution of KDE
+        highlighting (list of tuples: (float, float, color, string)): lower bound, upper bound, color, and label for highlighted ranges of continuous variable 
+        edge_values (list of tuples: (float, color, string)): x-location, color, and label for a vertical line marking a specific value of the continuous variable 
+        n_cols (int): number of columns for figure
+        min_group_size (int): number of samples for a given group in order to plot as KDE
+        max_group_spike (float): if KDE is unreasonably spiked (i.e. no distribution), plot histogram instead
+        log_y (bool): set y-scale to be logarithmic
+        w_scale (float): aspect ratio of axes
+        h_scale (float): aspect ratio of axes
+        pad (float): padding of subplots
+        w_pad (float): padding of subplots
+        h_pad(float): padding of subplots
+        anchor_legend (tuple of floats): x,y coordinates to pin legend to axis
+       
+
+    Returns:
+        fig, ax: figure and axis handles
+    """
+
 
     nrows = int(np.ceil(len(features)/float(ncols)))
 
