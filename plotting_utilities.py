@@ -128,20 +128,26 @@ def jointplot(x, y, c = 'k', cmap = 'gray_r',
         y (pandas series, floats): y-axis continuous values
         c (color identifier):
         c_map (colormap identifier):
-        alpha: 
+        alpha (float): transparency of plots
         xmin (float): minimum value to plot on x axis 
         xmax (float): maximum value to plot on x axis
-        xdelta
+        xdelta (float): padding around xmin/xmax values for easier viewing
         ymin (float): minimum value to plot on y axis 
         ymax (float): maximum value to plot on y axis
-        ydelta
+        ydelta (float): padding around xmin/xmax values for easier viewing
         bins (int): number of bins for histogram
         gridsize (int): resolution of hexbin
         highlighting (list of tuples: (float, float, color, string)): lower bound, upper bound, color, and label for highlighted ranges of continuous variable 
         edge_values (list of tuples: (float, color, string)): x-location, color, and label for a vertical line marking a specific value of the continuous variable 
-        logscale (bool): set y-scale to be logarithmic
+        logscale (bool): set scales to be logarithmic
         anchor_legend (tuple of floats): x,y coordinates to pin legend to axis
-        fig_axes
+        joint_xlabel (string): label for x axis of joint plot
+        joint_ylabel (string): label for x axis of joint plot
+         marginal_xlabel (string): label for y axis of vertical marginal plot 
+         marginal_ylabel (string): label for y axis of horizontal marginal plot 
+         fig_axes (tuple): tuple of returned values from this function; for plotting twice in same figure
+         joint_type (string): 'hex' or 'scatter' 
+         scatter_label (string): legend value for scatter plot (if plotting twice in same figure)
 
     Returns:
         fig, ax_joint, ax_marg_x, ax_marg_y : handles to figure and each of the three subplot axes
@@ -264,6 +270,10 @@ def heatmap(data, row_labels, col_labels,
         cbar_kw    : A dictionary with arguments to
                      :meth:`matplotlib.Figure.colorbar`.
         cbarlabel  : The label for the colorbar
+        vmin : lower bound for colormap
+        vmax : upper bound for colormap 
+        x_tick_rotation : angle for x axis labels
+        
     Returns:
         im, cbar : handles to image and colorbar
 
@@ -373,6 +383,24 @@ def annotate_heatmap(im, data=None, valfmt="{x:.2f}",
 
 def plot_classifier_performance(estimator, metrics_args, f_train, r_train, f_dev, r_dev, 
                                 calibrated = True, thresholds = None):
+     """
+     For a given estimator, train and evaluate the performance, plotting the confusion matrix. 
+     If classification is binary, also plot change in the first (and second) metric(s) with different thresholds. The final threshold will be set to optimize the first metric 
+
+    Arguments:
+        estimator (sklearn classifier function):
+        metrics_args (list of tuples: (sklearn metric function, arguments to function)) :
+        f_train (pandas data frame or array): training feature data
+        r_train (pandas data frame or array): training response data
+        f_dev (pandas data frame or array): development testing feature data
+        r_dev (pandas data frame or array): development testing response data
+        calibrated (bool) : whether or not to use calibrate prediction probabilities of classifier
+        thresholds (array) : for binary classifiers, the range of thresholds to consider
+
+    Returns:
+        mr_dev_type, mr_dev_probs, fig, ax: predicted development/testing data classification, predicted development/testing data  probabilities, handle to figure, handle to axes
+    """
+
     if calibrated:
         model = CalibratedClassifierCV(estimator, method="sigmoid")
         title = model.__class__.__name__+ ', '+model.base_estimator.__class__.__name__
@@ -482,3 +510,56 @@ def plot_classifier_performance(estimator, metrics_args, f_train, r_train, f_dev
 
 
     return mr_dev_type, mr_dev_probs, fig, ax
+
+# Adapted from https://stackoverflow.com/questions/37161563/how-to-graph-grid-scores-from-gridsearchcv
+def plot_grid_search(results, grid_param_1, grid_param_2, name_param_1, name_param_2):
+    """
+     Plot outputs from sklearn GridSearch over two parameters
+
+     Arguments:
+         results : GridSearch results
+         grid_param_1 :  array of first search parameter values
+         grid_param_2 :  array of second search parameter values
+         name_param_1 :  name of first search parameter values
+         name_param_2 :  name of second search parameter values
+     Returns:
+         None
+     """
+
+    # Plot Grid search scores
+    fig, ax = plt.subplots(1,3, figsize = (16,4))
+    fig.tight_layout(pad=0.4, w_pad=1.0, h_pad=2.0)
+
+    mean_score = np.array(results['mean_test_score']).reshape(len(grid_param_2),len(grid_param_1))
+    std_score = np.array(results['std_test_score']).reshape(len(grid_param_2),len(grid_param_1))
+    # Param1 is the X-axis, Param 2 is represented as a different curve (color line)
+    for idx, val in enumerate(grid_param_2):
+        ax[0].plot(grid_param_1, mean_score[idx,:], '-o', label= name_param_2 + ': ' + str(val))
+        ax[0].fill_between(grid_param_1, mean_score[idx,:]-std_score[idx,:],
+                           mean_score[idx,:]+std_score[idx,:],  alpha=0.1)
+
+    ax[0].set_title('Mean score', fontsize=16)
+    ax[0].set_xlabel(name_param_1, fontsize=16)
+    ax[0].grid('on')
+
+    mean_fit_time = np.array(results['mean_fit_time']).reshape(len(grid_param_2),len(grid_param_1))
+    # Param1 is the X-axis, Param 2 is represented as a different curve (color line)
+    for idx, val in enumerate(grid_param_2):
+        ax[1].plot(grid_param_1, mean_fit_time[idx,:], '-o', label= name_param_2 + ': ' + str(val))
+
+    ax[1].set_title('Mean fit time', fontsize=16)
+    ax[1].set_xlabel(name_param_1, fontsize=16)
+
+    ax[1].grid('on')
+
+    mean_score_time = np.array(results['mean_score_time']).reshape(len(grid_param_2),len(grid_param_1))
+    # Param1 is the X-axis, Param 2 is represented as a different curve (color line)
+    for idx, val in enumerate(grid_param_2):
+        ax[2].plot(grid_param_1, mean_score_time[idx,:], '-o', label= name_param_2 + ': ' + str(val))
+
+    ax[2].set_xlabel(name_param_1, fontsize=16)
+    ax[2].set_title('Mean score time', fontsize=16)
+    ax[2].legend( bbox_to_anchor=(1.05, 0.75), fontsize=15)
+    ax[2].grid('on')
+    
+    
