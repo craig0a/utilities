@@ -383,7 +383,7 @@ def annotate_heatmap(im, data=None, valfmt="{x:.2f}",
 
 def plot_classifier_performance(estimator, metrics_args, f_train, r_train, f_dev, r_dev, 
                                 calibrated = True, thresholds = None):
-     """
+    """
      For a given estimator, train and evaluate the performance, plotting the confusion matrix. 
      If classification is binary, also plot change in the first (and second) metric(s) with different thresholds. The final threshold will be set to optimize the first metric 
 
@@ -400,7 +400,7 @@ def plot_classifier_performance(estimator, metrics_args, f_train, r_train, f_dev
     Returns:
         mr_dev_type, mr_dev_probs, fig, ax: predicted development/testing data classification, predicted development/testing data  probabilities, handle to figure, handle to axes
     """
-
+    
     if calibrated:
         model = CalibratedClassifierCV(estimator, method="sigmoid")
         title = model.__class__.__name__+ ', '+model.base_estimator.__class__.__name__
