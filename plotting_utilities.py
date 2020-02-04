@@ -566,12 +566,33 @@ def plot_grid_search(results, grid_param_1, grid_param_2, name_param_1, name_par
     ax[2].grid('on')
     
     
-def rolling_timeseries_prediction(timeseries, freq, val_column, 
+def rolling_timeseries_prediction(timeseries, freq, 
+                                  val_column, clip = None, 
                                   method, parameters, 
                                   training_window, prediction_window,
                                   a=None, b=None, print_anomalies = False, verbose = 0,
                                   zoom_time_range = None):
-    
+        """
+     For a given timeseries of values and modeling method, train model on an incremental rolling basis and predict for some period with confidence bounds. Set up to check against the measured values over the predicted times and identify anomalies. 
+
+    Arguments:
+        timeseries (pandas dataframe): indexed by pd.date_time() timestamp 
+        freq (string): known or desired frequency of measurements:https://pandas.pydata.org/pandas-docs/stable/user_guide/timeseries.html#offset-aliases
+                        NOTE: no resampling of provided data implemented - interpolation of zero counts for missing time stamps 
+        val_column (string): name of column in data frame for values to predict
+        clip (list of floats): lower bound and upper bound of predictions & uncertainties
+        method (string): currently available 'sarima', 'tbats', 'ewm' (exponentially weighted mean), 'ewm_grouped'
+        parameters (dict): dictionary of arguments to method 
+        training_window (int):  number of data points to include in training
+        prediction_window (int):  number of data points to forecast
+        a, b (float, float): filter specifications, e.g. b, a = butter(1, 0.25)
+        print_anomalies (bool): print certain details of found anomalies
+        verbose (int): print certain tracking statements for code execution
+        zoom_time_range (list of pd.date_time()): secondary plot showing specified time range, to allow more detailed view
+
+    Returns:
+        fig, ax1, ax2, ax3, ax4, timeseries: handle to figure, handles to axes, timeseries with additional columns of prediction details
+    """
     ## Enforce assumptions about timeseries - no missing timestamps, ordered
     time_idx = pd.date_range(timeseries.index.min(), timeseries.index.max(), freq=freq)
     timeseries = timeseries.reindex(time_idx, fill_value=0)\
@@ -664,7 +685,6 @@ def rolling_timeseries_prediction(timeseries, freq, val_column,
             ts['upper_bound']= ts['mean']+1.96*np.nanmax([ts['r_shift'], ts['ewm_std'], ts['l_shift']], axis = 0)
 
             ts['lower_bound']= ts['mean']-1.96*np.nanmax([ts['r_shift'], ts['ewm_std'],ts['l_shift']],axis = 0)
-            ts['lower_bound']=ts['lower_bound'].clip_lower(0)  
 
 
             forecast_timeseries = test_timeseries[parameters['group_by'] +[val_column]].merge(ts.reset_index(), 
@@ -698,9 +718,11 @@ def rolling_timeseries_prediction(timeseries, freq, val_column,
                 forecast_timeseries['upper_bound']= filtfilt(b, a, forecast_timeseries['upper_bound'])
             except:
                 pass
-
-        forecast_timeseries['lower_bound']= forecast_timeseries['lower_bound'].clip_lower(0)
-        forecast_timeseries['mean']= forecast_timeseries['mean'].clip_lower(0)
+            
+        if clip is not None:
+            forecast_timeseries['lower_bound']=forecast_timeseries['lower_bound'].clip(lower = clip[0], upper = clip[1])   
+            forecast_timeseries['upper_bound']=forecast_timeseries['upper_bound'].clip(lower = clip[0], upper = clip[1])  
+            forecast_timeseries['mean']= forecast_timeseries['mean'].clip(lower = clip[0], upper = clip[1])  
             
             
         # Anomaly prediction
