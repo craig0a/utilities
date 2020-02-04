@@ -622,9 +622,11 @@ def rolling_timeseries_prediction(timeseries, freq, val_column,
             
         test_end_i = test_start_i+prediction_window
         if test_end_i >= len(time_idx):
+            test_end_i = len(time_idx)-1
+            last_iteration = True    
             if verbose >0:
                 print('At end of total timeseries. Last interation')
-            test_end_ts = len(time_idx)
+                
 
         test_start_ts = time_idx[test_start_i]
         test_end_ts = time_idx[test_end_i]
@@ -639,7 +641,12 @@ def rolling_timeseries_prediction(timeseries, freq, val_column,
 
         
         if method == 'sarima':
-            print('Method not yet implemented')
+            model = parameters['estimator'].fit(train_timeseries[val_column])
+            pred, confidence_info = model.predict(n_periods=prediction_window+1, return_conf_int=True)
+            forecast_timeseries = test_timeseries.join(pd.DataFrame({'mean': preds,
+                                                                     'lower_bound': confidence_info[:,0],
+                                                                     'upper_bound': confidence_info[:,1]},
+                                                                    index = test_timeseries.index))
         elif method == 'tbats':
             model = parameters['estimator'].fit(train_timeseries[val_column])
             ts, confidence_info = model.forecast(steps=prediction_window+1, confidence_level=0.95)
@@ -688,16 +695,20 @@ def rolling_timeseries_prediction(timeseries, freq, val_column,
             try:
                 forecast_timeseries['mean']= filtfilt(b, a, forecast_timeseries['mean'])
                 forecast_timeseries['lower_bound']= filtfilt(b, a, forecast_timeseries['lower_bound'])
-                forecast_timeseries['lower_bound']= forecast_timeseries['lower_bound'].clip_lower(0)
                 forecast_timeseries['upper_bound']= filtfilt(b, a, forecast_timeseries['upper_bound'])
             except:
                 pass
 
+        forecast_timeseries['lower_bound']= forecast_timeseries['lower_bound'].clip_lower(0)
+        forecast_timeseries['mean']= forecast_timeseries['mean'].clip_lower(0)
+            
+            
         # Anomaly prediction
         forecast_timeseries['anomaly'] = False
         forecast_timeseries['anomaly'] = forecast_timeseries.apply(lambda r: False if ((r[val_column]>=r['lower_bound']) 
-                                                                      and (r[val_column]<=r['upper_bound']))
+                                                                              and (r[val_column]<=r['upper_bound']))
                                                   else True, axis = 1)
+        forecast_timeseries['anomaly'] = forecast_timeseries['anomaly'].fillna(False)
 
         ax1.plot(test_timeseries.index, 
                  forecast_timeseries['mean'], label = 'Model forecast', color = 'g')
