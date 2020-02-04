@@ -641,8 +641,8 @@ def rolling_timeseries_prediction(timeseries, freq, val_column,
 
         
         if method == 'sarima':
-            model = parameters['estimator'].fit(train_timeseries[val_column])
-            pred, confidence_info = model.predict(n_periods=prediction_window+1, return_conf_int=True)
+            model = auto_arima(train_timeseries[val_column], seasonal = parameters['seasonal'], m = parameters['m'])
+            preds, confidence_info = model.predict(n_periods=prediction_window+1, return_conf_int=True)
             forecast_timeseries = test_timeseries.join(pd.DataFrame({'mean': preds,
                                                                      'lower_bound': confidence_info[:,0],
                                                                      'upper_bound': confidence_info[:,1]},
