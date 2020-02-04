@@ -724,9 +724,9 @@ def rolling_timeseries_prediction(timeseries, freq, val_column,
         ax3.hist(timeseries.loc[test_start_ts:test_end_ts, 'residual'], bins = 50, alpha = 0.25);
 
         # Shift training data 
-        train_start_i = train_end_i
+        train_start_i = train_start_i+prediction_window
         train_end_i = train_start_i+training_window
-        if train_end_i > len(time_idx):
+        if train_end_i >= len(time_idx):
             if verbose >0:
                 print('No more complete training data sets')
             break
@@ -762,4 +762,5 @@ def rolling_timeseries_prediction(timeseries, freq, val_column,
                                             ['count', 'prediction',
                                              '%_change']]), verticalalignment = 'top');
     plt.show()
+    
     return fig, ax1, ax2, ax3, ax4, timeseries
