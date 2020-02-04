@@ -4,11 +4,14 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import pickle
+from pmdarima import auto_arima
+from scipy.signal import filtfilt
 from scipy.stats import gaussian_kde
-import sys
-
 from sklearn.calibration import CalibratedClassifierCV
 from sklearn.metrics import confusion_matrix
+import sys
+from tbats import TBATS
+
 
 def feature_distributions(data, features, value_col, ncols = 3, 
                           highlighting = None, edge_values = None,
@@ -563,3 +566,200 @@ def plot_grid_search(results, grid_param_1, grid_param_2, name_param_1, name_par
     ax[2].grid('on')
     
     
+def rolling_timeseries_prediction(timeseries, freq, val_column, 
+                                  method, parameters, 
+                                  training_window, prediction_window,
+                                  a=None, b=None, print_anomalies = False, verbose = 0,
+                                  zoom_time_range = None):
+    
+    ## Enforce assumptions about timeseries - no missing timestamps, ordered
+    time_idx = pd.date_range(timeseries.index.min(), timeseries.index.max(), freq=freq)
+    timeseries = timeseries.reindex(time_idx, fill_value=0)\
+                           .sort_index(0)
+
+    # Take rolling window of last <window> days for training
+    train_start_i = 0
+    train_end_i = train_start_i+training_window
+
+    train_start_ts = time_idx[train_start_i]
+    train_end_ts = time_idx[train_end_i]
+
+    if verbose >0:
+        print('Training start: {}, Training end: {}, Training duration: {}'.format(train_start_ts, 
+                                                                               train_end_ts, 
+                                                                               train_end_ts - train_start_ts))
+
+    #Set up figure  & plot original data 
+    fig = plt.figure(figsize = (30,20))
+    gs1 = GridSpec(4, 3, left=0.05, right=0.48, 
+                   width_ratios=[2, 0, 1], height_ratios=[1, 0, 1, 1],
+                   wspace=0.1, hspace = 0.6)
+    ax1 = fig.add_subplot(gs1[:-2, :])
+    ax2 = fig.add_subplot(gs1[-2, :-1])
+    ax3 = fig.add_subplot(gs1[-2, -1])
+    ax4 = fig.add_subplot(gs1[-1, :])
+
+    ax1.plot(timeseries.index, timeseries[val_column], label = 'Original data', color = 'k')
+    ax1.set_ylabel(val_column)
+
+    ax2.set_ylabel(val_column)
+    if zoom_time_range is not None:
+        ax2.set_xlim(zoom_time_range)
+
+    ax3.yaxis.set_label_position("right")
+    ax3.yaxis.tick_right()
+    ax3.set_xlabel('Model fit residual (%s)'%val_column)
+
+
+    last_iteration = False
+    while not last_iteration:
+        # Predict next <prediction_window> days
+        test_start_i = train_end_i+1
+        if test_start_i >= len(time_idx):
+            if verbose >0:
+                print('No further prediction data points.')
+            break
+            
+        test_end_i = test_start_i+prediction_window
+        if test_end_i >= len(time_idx):
+            if verbose >0:
+                print('At end of total timeseries. Last interation')
+            test_end_ts = len(time_idx)
+
+        test_start_ts = time_idx[test_start_i]
+        test_end_ts = time_idx[test_end_i]
+        if verbose >0:
+            print('Prediction start: {}, Prediction end: {}, Prediction duration: {}'.format(test_start_ts, 
+                                                                                   test_end_ts, 
+                                                                                   test_end_ts - test_start_ts))    
+
+        # Collect training and testing timeseries
+        train_timeseries = timeseries.loc[train_start_ts:train_end_ts]
+        test_timeseries = timeseries.loc[test_start_ts:test_end_ts]
+
+        
+        if method == 'sarima':
+            print('Method not yet implemented')
+        elif method == 'tbats':
+            model = parameters['estimator'].fit(train_timeseries[val_column])
+            ts, confidence_info = model.forecast(steps=prediction_window+1, confidence_level=0.95)
+            forecast_timeseries = test_timeseries.join(pd.DataFrame(confidence_info, index = test_timeseries.index))
+        elif method == 'ewm_grouped':
+            # Exponentially weighted mean over seasonal groupings
+            ts = train_timeseries.groupby(parameters['group_by'])[val_column]\
+                                .agg({'mean': lambda s: s.ewm(halflife=len(s)/parameters['halflife_divisor']).mean()[-1],
+                                      'ewm_std': lambda s: s.ewm(halflife=len(s)/parameters['halflife_divisor']).std()[-1]})
+            # Compute & account for grouping bin edge issues in uncertainties
+            ts['r_shift'] = ts['ewm_std'].rolling(parameters['smoothing_window_size'], win_type = 'gaussian')\
+                                                .mean(std = parameters['smoothing_gaussian_std'])
+            ts['l_shift'] = (ts.iloc[::-1]['ewm_std'].rolling(parameters['smoothing_window_size'], win_type = 'gaussian')\
+                                                .mean(std = parameters['smoothing_gaussian_std'])).iloc[::-1]
+            ts['upper_bound']= ts['mean']+1.96*np.nanmax([ts['r_shift'], ts['ewm_std'], ts['l_shift']], axis = 0)
+
+            ts['lower_bound']= ts['mean']-1.96*np.nanmax([ts['r_shift'], ts['ewm_std'],ts['l_shift']],axis = 0)
+            ts['lower_bound']=ts['lower_bound'].clip_lower(0)  
+
+
+            forecast_timeseries = test_timeseries[parameters['group_by'] +[val_column]].merge(ts.reset_index(), 
+                                                                                           on = parameters['group_by'], 
+                                                                                           how = 'left')
+            forecast_timeseries.index = test_timeseries.index
+
+
+        elif method == 'ewm':
+            # Exponentially weighted mean
+            ts = train_timeseries[val_column].apply({'mean': lambda s:
+                                                     s.ewm(halflife=len(s)/parameters['halflife_divisor']).mean()[-1],
+                                                     'ewm_std': lambda s:
+                                                     s.ewm(halflife=len(s)/parameters['halflife_divisor']).std()[-1]})
+
+            ts['upper_bound']= ts['mean']+1.96*ts['ewm_std']
+            ts['lower_bound']= ts['mean']-1.96*ts['ewm_std']
+            ts['lower_bound']= np.max([ts['lower_bound'], 0])
+
+            forecast_timeseries = test_timeseries.join(pd.concat([ts.to_frame().T]*len(test_timeseries))\
+                                                .set_index(test_timeseries.index))
+
+        else:
+            raise InputError('Method not defined')
+
+        # Smoothing of mean
+        if (a is not None) & (b is not None):
+            try:
+                forecast_timeseries['mean']= filtfilt(b, a, forecast_timeseries['mean'])
+                forecast_timeseries['lower_bound']= filtfilt(b, a, forecast_timeseries['lower_bound'])
+                forecast_timeseries['lower_bound']= forecast_timeseries['lower_bound'].clip_lower(0)
+                forecast_timeseries['upper_bound']= filtfilt(b, a, forecast_timeseries['upper_bound'])
+            except:
+                pass
+
+        # Anomaly prediction
+        forecast_timeseries['anomaly'] = False
+        forecast_timeseries['anomaly'] = forecast_timeseries.apply(lambda r: False if ((r[val_column]>=r['lower_bound']) 
+                                                                      and (r[val_column]<=r['upper_bound']))
+                                                  else True, axis = 1)
+
+        ax1.plot(test_timeseries.index, 
+                 forecast_timeseries['mean'], label = 'Model forecast', color = 'g')
+        ax1.fill_between(test_timeseries.index, 
+                         forecast_timeseries['lower_bound'], 
+                         forecast_timeseries['upper_bound'],
+                         color = 'k', alpha = 0.25)
+
+        ax2.plot(test_timeseries.index, test_timeseries[val_column], label = 'Original data', color = 'k')
+        ax2.plot(test_timeseries.index, forecast_timeseries['mean'], label = 'Model forecast', color = 'g')
+        ax2.fill_between(test_timeseries.index, 
+                         forecast_timeseries['lower_bound'], 
+                         forecast_timeseries['upper_bound'],
+                         color = 'k', alpha = 0.2)
+        for i in forecast_timeseries.loc[forecast_timeseries['anomaly']].index:
+            ax2.scatter(i, test_timeseries.loc[i, val_column], color = 'r')    
+
+        timeseries.loc[test_start_ts:test_end_ts, 'residual'] = \
+                (test_timeseries[val_column] - forecast_timeseries['mean'])
+
+        timeseries.loc[test_start_ts:test_end_ts, 'anomaly'] = forecast_timeseries['anomaly']
+        timeseries.loc[test_start_ts:test_end_ts, 'prediction'] = forecast_timeseries['mean']
+
+        ax3.hist(timeseries.loc[test_start_ts:test_end_ts, 'residual'], bins = 50, alpha = 0.25);
+
+        # Shift training data 
+        train_start_i = train_end_i
+        train_end_i = train_start_i+training_window
+        if train_end_i > len(time_idx):
+            if verbose >0:
+                print('No more complete training data sets')
+            break
+
+        train_start_ts = time_idx[train_start_i]
+        train_end_ts = time_idx[train_end_i]
+
+        if verbose >0:
+            print('Training start: {}, Training end: {}, Training duration: {}'.format(train_start_ts, 
+                                                                               train_end_ts, 
+                                                                               train_end_ts - train_start_ts))
+
+
+    timeseries['%_change'] = (timeseries['residual']*100.)/timeseries[val_column]
+ 
+    ax4.axis('off')
+    
+    pd.options.display.float_format = '{:,.1f}'.format
+
+    ax4.text(0,1.1,'MAE (forecast): %.3f'%np.nanmean(np.abs(timeseries['residual']))
+                  +'\nAnomaly count: %d'%np.nansum(timeseries['anomaly']));
+    
+    if print_anomalies:
+        ax4.text(0.2,1.1, 'Under-estimates')
+        ax4.text(0.2,1.0,'{}'.format(timeseries.loc[(timeseries['anomaly']==True) & 
+                                                    (timeseries['residual']>0), 
+                                                    ['count', 'prediction',
+                                                     '%_change']]), verticalalignment = 'top');
+
+        ax4.text(0.6,1.1, 'Overestimates')
+        ax4.text(0.6,1.0,'{}'.format(timeseries.loc[(timeseries['anomaly']==True) & 
+                                            (timeseries['residual']<0), 
+                                            ['count', 'prediction',
+                                             '%_change']]), verticalalignment = 'top');
+    plt.show()
+    return fig, ax1, ax2, ax3, ax4, timeseries
