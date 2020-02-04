@@ -705,10 +705,11 @@ def rolling_timeseries_prediction(timeseries, freq, val_column,
             
         # Anomaly prediction
         forecast_timeseries['anomaly'] = False
-        forecast_timeseries['anomaly'] = forecast_timeseries.apply(lambda r: False if ((r[val_column]>=r['lower_bound']) 
-                                                                              and (r[val_column]<=r['upper_bound']))
-                                                  else True, axis = 1)
-        forecast_timeseries['anomaly'] = forecast_timeseries['anomaly'].fillna(False)
+        forecast_timeseries['anomaly'] = forecast_timeseries.apply(lambda r: False if (((r[val_column]>=r['lower_bound']) 
+                                                                                    and (r[val_column]<=r['upper_bound']))|
+                                                                                   np.isnan(r['mean']))
+                                                                              else True, axis = 1)
+
 
         ax1.plot(test_timeseries.index, 
                  forecast_timeseries['mean'], label = 'Model forecast', color = 'g')
@@ -759,18 +760,18 @@ def rolling_timeseries_prediction(timeseries, freq, val_column,
 
     ax4.text(0,1.1,'MAE (forecast): %.3f'%np.nanmean(np.abs(timeseries['residual']))
                   +'\nAnomaly count: %d'%np.nansum(timeseries['anomaly']));
-    
+        
     if print_anomalies:
         ax4.text(0.2,1.1, 'Under-estimates')
         ax4.text(0.2,1.0,'{}'.format(timeseries.loc[(timeseries['anomaly']==True) & 
                                                     (timeseries['residual']>0), 
-                                                    ['count', 'prediction',
+                                                    [val_column, 'prediction',
                                                      '%_change']]), verticalalignment = 'top');
 
         ax4.text(0.6,1.1, 'Overestimates')
         ax4.text(0.6,1.0,'{}'.format(timeseries.loc[(timeseries['anomaly']==True) & 
                                             (timeseries['residual']<0), 
-                                            ['count', 'prediction',
+                                            [val_column, 'prediction',
                                              '%_change']]), verticalalignment = 'top');
     plt.show()
     
