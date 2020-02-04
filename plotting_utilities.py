@@ -567,7 +567,7 @@ def plot_grid_search(results, grid_param_1, grid_param_2, name_param_1, name_par
     
     
 def rolling_timeseries_prediction(timeseries, freq, 
-                                  val_column, clip = None, 
+                                  val_column, clip_val = None, 
                                   method, parameters, 
                                   training_window, prediction_window,
                                   a=None, b=None, print_anomalies = False, verbose = 0,
@@ -720,9 +720,9 @@ def rolling_timeseries_prediction(timeseries, freq,
                 pass
             
         if clip is not None:
-            forecast_timeseries['lower_bound']=forecast_timeseries['lower_bound'].clip(lower = clip[0], upper = clip[1])   
-            forecast_timeseries['upper_bound']=forecast_timeseries['upper_bound'].clip(lower = clip[0], upper = clip[1])  
-            forecast_timeseries['mean']= forecast_timeseries['mean'].clip(lower = clip[0], upper = clip[1])  
+            forecast_timeseries['lower_bound']=forecast_timeseries['lower_bound'].clip(lower = clip_val[0], upper = clip_val[1])   
+            forecast_timeseries['upper_bound']=forecast_timeseries['upper_bound'].clip(lower = clip_val[0], upper = clip_val[1])  
+            forecast_timeseries['mean']= forecast_timeseries['mean'].clip(lower = clip_val[0], upper = clip_val[1])  
             
             
         # Anomaly prediction
