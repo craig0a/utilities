@@ -567,12 +567,13 @@ def plot_grid_search(results, grid_param_1, grid_param_2, name_param_1, name_par
     
     
 def rolling_timeseries_prediction(timeseries, freq, 
-                                  val_column, clip_val = None, 
+                                  val_column, 
                                   method, parameters, 
                                   training_window, prediction_window,
+                                  clip_val = None, 
                                   a=None, b=None, print_anomalies = False, verbose = 0,
                                   zoom_time_range = None):
-        """
+    """
      For a given timeseries of values and modeling method, train model on an incremental rolling basis and predict for some period with confidence bounds. Set up to check against the measured values over the predicted times and identify anomalies. 
 
     Arguments:
@@ -593,6 +594,7 @@ def rolling_timeseries_prediction(timeseries, freq,
     Returns:
         fig, ax1, ax2, ax3, ax4, timeseries: handle to figure, handles to axes, timeseries with additional columns of prediction details
     """
+    
     ## Enforce assumptions about timeseries - no missing timestamps, ordered
     time_idx = pd.date_range(timeseries.index.min(), timeseries.index.max(), freq=freq)
     timeseries = timeseries.reindex(time_idx, fill_value=0)\
@@ -719,7 +721,7 @@ def rolling_timeseries_prediction(timeseries, freq,
             except:
                 pass
             
-        if clip is not None:
+        if clip_val is not None:
             forecast_timeseries['lower_bound']=forecast_timeseries['lower_bound'].clip(lower = clip_val[0], upper = clip_val[1])   
             forecast_timeseries['upper_bound']=forecast_timeseries['upper_bound'].clip(lower = clip_val[0], upper = clip_val[1])  
             forecast_timeseries['mean']= forecast_timeseries['mean'].clip(lower = clip_val[0], upper = clip_val[1])  
